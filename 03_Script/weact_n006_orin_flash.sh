@@ -67,7 +67,7 @@ check_and_extract_path() {
 extract_version() {
     local current_path="$1"
     
-    if [[ "$current_path" =~ JetPack_([0-9]+\.[0-9]+\.[0-9]+)_Linux_JETSON_ORIN_NX_TARGETS ]]; then
+    if [[ "$current_path" =~ JetPack_([0-9]+\.[0-9]+(\.[0-9]+)?)_Linux_JETSON_ORIN_NX_TARGETS ]]; then
         echo "${BASH_REMATCH[1]}"
         return 0
     else
@@ -108,6 +108,20 @@ copy_files() {
         source_dtb="$script_dir/DTB/JP6/KN_DTB"
         source_gpio_bct="$script_dir/DTB/JP6/GPIO_BCT"
         source_gpio_bl="$script_dir/DTB/JP6/GPIO_BL"
+        target_dtb="$LINUX_FOR_TEGRA_DIR/kernel/dtb"
+        target_gpio_bct="$LINUX_FOR_TEGRA_DIR/bootloader/generic/BCT"
+        target_gpio_bl="$LINUX_FOR_TEGRA_DIR/bootloader"
+        dtb_files=("tegra234-p3768-0000+p3767-0000-nv.dtb" "tegra234-p3768-0000+p3767-0000-nv-super.dtb" \
+                   "tegra234-p3768-0000+p3767-0001-nv.dtb" "tegra234-p3768-0000+p3767-0001-nv-super.dtb")
+        gpio_bct_files=("tegra234-mb1-bct-padvoltage-p3767-dp-a03.dtsi" "tegra234-mb1-bct-padvoltage-p3767-hdmi-a03.dtsi" \
+                        "tegra234-mb1-bct-pinmux-p3767-dp-a03.dtsi" "tegra234-mb1-bct-pinmux-p3767-hdmi-a03.dtsi" \
+                        "tegra234-mb2-bct-misc-p3767-0000.dts")
+        gpio_bl_files=("tegra234-mb1-bct-gpio-p3767-dp-a03.dtsi" "tegra234-mb1-bct-gpio-p3767-hdmi-a03.dtsi")
+    elif [[ "$version" == "7" ]]; then
+        # Version 7.x.x
+        source_dtb="$script_dir/DTB/JP7/KN_DTB"
+        source_gpio_bct="$script_dir/DTB/JP7/GPIO_BCT"
+        source_gpio_bl="$script_dir/DTB/JP7/GPIO_BL"
         target_dtb="$LINUX_FOR_TEGRA_DIR/kernel/dtb"
         target_gpio_bct="$LINUX_FOR_TEGRA_DIR/bootloader/generic/BCT"
         target_gpio_bl="$LINUX_FOR_TEGRA_DIR/bootloader"
@@ -177,6 +191,12 @@ execute_command() {
          sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 \
               -c tools/kernel_flash/flash_l4t_t234_nvme.xml -p "-c bootloader/generic/cfg/flash_t234_qspi.xml" \
               --showlogs --network usb0 jetson-orin-nano-devkit-super internal
+    elif [[ "$version" == "7" ]]; then
+        # Execute command for version 7.x.x
+        echo "Executing flash for version 7.x.x"
+         sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 \
+              -c tools/kernel_flash/flash_l4t_t234_nvme.xml -p "-c bootloader/generic/cfg/flash_t234_qspi.xml" \
+              --showlogs --network usb0 jetson-orin-nano-devkit-super internal
     else
         log_error "No command defined for version $version"
         return 1
@@ -216,9 +236,9 @@ major_version=$(get_major_version "$jetpack_version")
 log_info "Major version: $major_version"
 
 # Step 4: Check if version is supported
-if [[ "$major_version" != "5" && "$major_version" != "6" ]]; then
+if [[ "$major_version" != "5" && "$major_version" != "6" && "$major_version" != "7" ]]; then
     log_error "Unsupported JetPack version: $jetpack_version"
-    log_error "Only versions 5.x.x and 6.x.x are supported"
+    log_error "Only versions 5.x.x and 6.x.x and 7.x.x are supported"
     exit 1
 fi
 
