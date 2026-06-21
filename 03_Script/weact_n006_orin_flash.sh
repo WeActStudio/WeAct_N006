@@ -9,6 +9,9 @@
 # Global variable to store Linux_for_Tegra directory
 LINUX_FOR_TEGRA_DIR=""
 
+# Global flag for -n option (use non-super board)
+USE_NON_SUPER=false
+
 # ============================================
 # Logging Functions
 # ============================================
@@ -17,6 +20,29 @@ log_info()    { echo "[INFO]    $1"; }
 log_success() { echo "[SUCCESS] $1"; }
 log_error()   { echo "[ERROR]   $1"; }
 log_warning() { echo "[WARNING] $1"; }
+
+# ============================================
+# Version Comparison Function
+# ============================================
+
+# Compare two version strings (e.g., "5.1.3" vs "5.1.4")
+# Returns 0 (true) if first version > second version, else 1 (false)
+version_gt() {
+    local v1="$1"
+    local v2="$2"
+    awk -v a="$v1" -v b="$v2" '
+    BEGIN {
+        split(a, A, ".");
+        split(b, B, ".");
+        for (i = 1; i <= 3; i++) {
+            if (A[i] == "") A[i] = 0;
+            if (B[i] == "") B[i] = 0;
+            if (A[i] > B[i]) exit 0;
+            if (A[i] < B[i]) exit 1;
+        }
+        exit 1;  # equal
+    }'
+}
 
 # ============================================
 # Core Functions
@@ -83,15 +109,21 @@ get_major_version() {
 
 # Copy files for a specific version
 copy_files() {
-    local version="$1"
-    local script_dir="$2"
+    local major_version="$1"      # e.g., "5", "6", "7"
+    local full_version="$2"       # e.g., "5.1.2"
+    local script_dir="$3"
     
-    log_info "Copying files for JetPack $version"
+    log_info "Copying files for JetPack $full_version (major $major_version)"
     
     # Determine source and target directories based on version
-    if [[ "$version" == "5" ]]; then
-        # Version 5.x.x
-        source_dtb="$script_dir/DTB/JP5/KN_DTB"
+    if [[ "$major_version" == "5" ]]; then
+        # JP5: choose DTB subdir based on version > 5.1.3
+        if version_gt "$full_version" "5.1.3"; then
+            dtb_subdir="M513"
+        else
+            dtb_subdir="N513"
+        fi
+        source_dtb="$script_dir/DTB/JP5/KN_DTB/${dtb_subdir}"
         source_gpio_bct="$script_dir/DTB/JP5/GPIO_BCT"
         source_gpio_bl="$script_dir/DTB/JP5/GPIO_BL"
         target_dtb="$LINUX_FOR_TEGRA_DIR/kernel/dtb"
@@ -103,9 +135,14 @@ copy_files() {
                         "tegra234-mb1-bct-pinmux-p3767-dp-a03.dtsi" "tegra234-mb1-bct-pinmux-p3767-hdmi-a03.dtsi" \
                         "tegra234-mb2-bct-misc-p3767-0000.dts")
         gpio_bl_files=("tegra234-mb1-bct-gpio-p3767-dp-a03.dtsi" "tegra234-mb1-bct-gpio-p3767-hdmi-a03.dtsi")
-    elif [[ "$version" == "6" ]]; then
-        # Version 6.x.x
-        source_dtb="$script_dir/DTB/JP6/KN_DTB"
+    elif [[ "$major_version" == "6" ]]; then
+        # JP6: choose DTB subdir based on version > 6.1
+        if version_gt "$full_version" "6.1"; then
+            dtb_subdir="M61"
+        else
+            dtb_subdir="N61"
+        fi
+        source_dtb="$script_dir/DTB/JP6/KN_DTB/${dtb_subdir}"
         source_gpio_bct="$script_dir/DTB/JP6/GPIO_BCT"
         source_gpio_bl="$script_dir/DTB/JP6/GPIO_BL"
         target_dtb="$LINUX_FOR_TEGRA_DIR/kernel/dtb"
@@ -117,9 +154,10 @@ copy_files() {
                         "tegra234-mb1-bct-pinmux-p3767-dp-a03.dtsi" "tegra234-mb1-bct-pinmux-p3767-hdmi-a03.dtsi" \
                         "tegra234-mb2-bct-misc-p3767-0000.dts")
         gpio_bl_files=("tegra234-mb1-bct-gpio-p3767-dp-a03.dtsi" "tegra234-mb1-bct-gpio-p3767-hdmi-a03.dtsi")
-    elif [[ "$version" == "7" ]]; then
-        # Version 7.x.x
-        source_dtb="$script_dir/DTB/JP7/KN_DTB"
+    elif [[ "$major_version" == "7" ]]; then
+        # JP7: only M72 subdir
+        dtb_subdir="M72"
+        source_dtb="$script_dir/DTB/JP7/KN_DTB/${dtb_subdir}"
         source_gpio_bct="$script_dir/DTB/JP7/GPIO_BCT"
         source_gpio_bl="$script_dir/DTB/JP7/GPIO_BL"
         target_dtb="$LINUX_FOR_TEGRA_DIR/kernel/dtb"
@@ -132,9 +170,11 @@ copy_files() {
                         "tegra234-mb2-bct-misc-p3767-0000.dts")
         gpio_bl_files=("tegra234-mb1-bct-gpio-p3767-dp-a03.dtsi" "tegra234-mb1-bct-gpio-p3767-hdmi-a03.dtsi")
     else
-        log_error "Unsupported version: $version"
+        log_error "Unsupported version: $major_version"
         return 1
     fi
+    
+    log_info "Using DTB source directory: $source_dtb"
     
     # Copy DTB files
     for file in "${dtb_files[@]}"; do
@@ -176,27 +216,35 @@ copy_files() {
 execute_command() {
     local version="$1"
     
-    log_info "Executing flash command for version $version"
+    # Determine board target based on -n flag
+    local board_target
+    if [ "$USE_NON_SUPER" = true ]; then
+        board_target="jetson-orin-nano-devkit"
+    else
+        board_target="jetson-orin-nano-devkit-super"
+    fi
+    
+    log_info "Executing flash command for version $version with board: $board_target"
     
     if [[ "$version" == "5" ]]; then
         # Execute command for version 5.x.x
         echo "Executing flash command for version 5.x.x"
-         sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 \
-              -c tools/kernel_flash/flash_l4t_t234_nvme.xml -p "-c bootloader/t186ref/cfg/flash_t234_qspi.xml" \
-              --showlogs --network usb0 jetson-orin-nano-devkit-super internal
+        sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 \
+             -c tools/kernel_flash/flash_l4t_t234_nvme.xml -p "-c bootloader/t186ref/cfg/flash_t234_qspi.xml" \
+             --showlogs --network usb0 "$board_target" internal
 
     elif [[ "$version" == "6" ]]; then
         # Execute command for version 6.x.x
         echo "Executing flash for version 6.x.x"
-         sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 \
-              -c tools/kernel_flash/flash_l4t_t234_nvme.xml -p "-c bootloader/generic/cfg/flash_t234_qspi.xml" \
-              --showlogs --network usb0 jetson-orin-nano-devkit-super internal
+        sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 \
+             -c tools/kernel_flash/flash_l4t_t234_nvme.xml -p "-c bootloader/generic/cfg/flash_t234_qspi.xml" \
+             --showlogs --network usb0 "$board_target" internal
     elif [[ "$version" == "7" ]]; then
         # Execute command for version 7.x.x
         echo "Executing flash for version 7.x.x"
-         sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 \
-              -c tools/kernel_flash/flash_l4t_t234_nvme.xml -p "-c bootloader/generic/cfg/flash_t234_qspi.xml" \
-              --showlogs --network usb0 jetson-orin-nano-devkit-super internal
+        sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 \
+             -c tools/kernel_flash/flash_l4t_t234_nvme.xml -p "-c bootloader/generic/cfg/flash_t234_qspi.xml" \
+             --showlogs --network usb0 "$board_target" internal
     else
         log_error "No command defined for version $version"
         return 1
@@ -208,6 +256,20 @@ execute_command() {
 # ============================================
 # Main Script
 # ============================================
+
+# Parse command line options
+while getopts "n" opt; do
+    case $opt in
+        n)
+            USE_NON_SUPER=true
+            ;;
+        \?)
+            echo "Usage: $0 [-n]"
+            echo "  -n    Use non-super board (jetson-orin-nano-devkit instead of jetson-orin-nano-devkit-super)"
+            exit 1
+            ;;
+    esac
+done
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -242,8 +304,8 @@ if [[ "$major_version" != "5" && "$major_version" != "6" && "$major_version" != 
     exit 1
 fi
 
-# Step 5: Copy files
-if ! copy_files "$major_version" "$SCRIPT_DIR"; then
+# Step 5: Copy files (now pass full version for subdir selection)
+if ! copy_files "$major_version" "$jetpack_version" "$SCRIPT_DIR"; then
     log_error "Failed to copy DTB Files. Please use the \"sudo\" to rerun the script."
     exit 1
 fi
