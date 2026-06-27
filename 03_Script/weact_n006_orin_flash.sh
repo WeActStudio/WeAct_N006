@@ -129,8 +129,6 @@ copy_files() {
         target_dtb="$LINUX_FOR_TEGRA_DIR/kernel/dtb"
         target_gpio_bct="$LINUX_FOR_TEGRA_DIR/bootloader/t186ref/BCT"
         target_gpio_bl="$LINUX_FOR_TEGRA_DIR/bootloader"
-        dtb_files=("tegra234-p3767-0000-p3768-0000-a0.dtb" "tegra234-p3767-0000-super-p3768-0000-a0.dtb" \
-                   "tegra234-p3767-0001-p3768-0000-a0.dtb" "tegra234-p3767-0001-super-p3768-0000-a0.dtb")
         gpio_bct_files=("tegra234-mb1-bct-padvoltage-p3767-dp-a03.dtsi" "tegra234-mb1-bct-padvoltage-p3767-hdmi-a03.dtsi" \
                         "tegra234-mb1-bct-pinmux-p3767-dp-a03.dtsi" "tegra234-mb1-bct-pinmux-p3767-hdmi-a03.dtsi" \
                         "tegra234-mb2-bct-misc-p3767-0000.dts")
@@ -148,8 +146,6 @@ copy_files() {
         target_dtb="$LINUX_FOR_TEGRA_DIR/kernel/dtb"
         target_gpio_bct="$LINUX_FOR_TEGRA_DIR/bootloader/generic/BCT"
         target_gpio_bl="$LINUX_FOR_TEGRA_DIR/bootloader"
-        dtb_files=("tegra234-p3768-0000+p3767-0000-nv.dtb" "tegra234-p3768-0000+p3767-0000-nv-super.dtb" \
-                   "tegra234-p3768-0000+p3767-0001-nv.dtb" "tegra234-p3768-0000+p3767-0001-nv-super.dtb")
         gpio_bct_files=("tegra234-mb1-bct-padvoltage-p3767-dp-a03.dtsi" "tegra234-mb1-bct-padvoltage-p3767-hdmi-a03.dtsi" \
                         "tegra234-mb1-bct-pinmux-p3767-dp-a03.dtsi" "tegra234-mb1-bct-pinmux-p3767-hdmi-a03.dtsi" \
                         "tegra234-mb2-bct-misc-p3767-0000.dts")
@@ -163,8 +159,6 @@ copy_files() {
         target_dtb="$LINUX_FOR_TEGRA_DIR/kernel/dtb"
         target_gpio_bct="$LINUX_FOR_TEGRA_DIR/bootloader/generic/BCT"
         target_gpio_bl="$LINUX_FOR_TEGRA_DIR/bootloader"
-        dtb_files=("tegra234-p3768-0000+p3767-0000-nv.dtb" "tegra234-p3768-0000+p3767-0000-nv-super.dtb" \
-                   "tegra234-p3768-0000+p3767-0001-nv.dtb" "tegra234-p3768-0000+p3767-0001-nv-super.dtb")
         gpio_bct_files=("tegra234-mb1-bct-padvoltage-p3767-dp-a03.dtsi" "tegra234-mb1-bct-padvoltage-p3767-hdmi-a03.dtsi" \
                         "tegra234-mb1-bct-pinmux-p3767-dp-a03.dtsi" "tegra234-mb1-bct-pinmux-p3767-hdmi-a03.dtsi" \
                         "tegra234-mb2-bct-misc-p3767-0000.dts")
@@ -176,16 +170,32 @@ copy_files() {
     
     log_info "Using DTB source directory: $source_dtb"
     
-    # Copy DTB files
+    # ============================================================
+    # NEW: Copy ALL .dtb files from source_dtb to target_dtb
+    # ============================================================
+    # Check if source directory exists and contains .dtb files
+    if [[ ! -d "$source_dtb" ]]; then
+        log_error "DTB source directory does not exist: $source_dtb"
+        return 1
+    fi
+    
+    # Use nullglob to handle no matching files gracefully
+    shopt -s nullglob
+    dtb_files=("$source_dtb"/*.dtb)
+    shopt -u nullglob
+    
+    if [[ ${#dtb_files[@]} -eq 0 ]]; then
+        log_error "No .dtb files found in $source_dtb"
+        return 1
+    fi
+    
+    # Copy each .dtb file
     for file in "${dtb_files[@]}"; do
-        if [[ -f "$source_dtb/$file" ]]; then
-            cp "$source_dtb/$file" "$target_dtb/"
-            log_info "Copied Kernel DTB: $source_dtb/$file -> $target_dtb/"
-        else
-            log_error "Kernel DTB file not found: $source_dtb/$file"
-            return 1
-        fi
+        filename=$(basename "$file")
+        cp "$file" "$target_dtb/"
+        log_info "Copied Kernel DTB: $file -> $target_dtb/"
     done
+    # ============================================================
     
     # Copy GPIO BCT files
     for file in "${gpio_bct_files[@]}"; do
